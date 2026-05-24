@@ -44,7 +44,7 @@ jobs:
           username: ${{ inputs.ssh_user }}
           key_path: ${{ github.workspace }}/key.pem
           source: "image.tar.gz,${{ inputs.nginx_config_path }}"
-          target: /home/${{ inputs.ssh_user }}/_deploy
+          target: /home/${{ inputs.ssh_user }}/_deploy_${{ github.run_id }}
 
       - name: Apply nginx hardening
         uses: diegovaille/deploy-templates/actions/apply-nginx-hardening@main
@@ -67,7 +67,7 @@ jobs:
           envs: DOCKER_ENV
           script: |
             set -e
-            cd /home/${{ inputs.ssh_user }}/_deploy
+            cd /home/${{ inputs.ssh_user }}/_deploy_${{ github.run_id }}
 
             echo "Installing nginx server block..."
             sudo cp "${{ inputs.nginx_config_path }}" "/etc/nginx/sites-available/${{ inputs.site_name }}"
@@ -96,7 +96,7 @@ jobs:
               ${{ inputs.image_name }}:latest
 
             sudo systemctl reload nginx
-            rm -rf /home/${{ inputs.ssh_user }}/_deploy
+            rm -rf /home/${{ inputs.ssh_user }}/_deploy_${{ github.run_id }}
 
       - name: Remove SSH key
         if: always()

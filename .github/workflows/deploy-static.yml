@@ -46,7 +46,7 @@ jobs:
           username: ${{ inputs.ssh_user }}
           key_path: ${{ github.workspace }}/key.pem
           source: "site.tar.gz,${{ inputs.nginx_config_path }}"
-          target: /home/${{ inputs.ssh_user }}/_deploy
+          target: /home/${{ inputs.ssh_user }}/_deploy_${{ github.run_id }}
 
       - name: Apply nginx hardening
         uses: diegovaille/deploy-templates/actions/apply-nginx-hardening@main
@@ -63,7 +63,7 @@ jobs:
           key_path: ${{ github.workspace }}/key.pem
           script: |
             set -e
-            cd /home/${{ inputs.ssh_user }}/_deploy
+            cd /home/${{ inputs.ssh_user }}/_deploy_${{ github.run_id }}
 
             echo "Publishing static build..."
             sudo rm -rf "${{ inputs.remote_path }}"
@@ -87,7 +87,7 @@ jobs:
               sudo systemctl reload nginx
             fi
 
-            rm -rf /home/${{ inputs.ssh_user }}/_deploy
+            rm -rf /home/${{ inputs.ssh_user }}/_deploy_${{ github.run_id }}
 
       - name: Remove SSH key
         if: always()
