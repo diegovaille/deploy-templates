@@ -1,0 +1,62 @@
+name: Apply nginx hardening
+description: Idempotently writes /etc/nginx/conf.d/hardening.conf and /etc/nginx/snippets/hardening.conf on a remote VM.
+inputs:
+  vm_host:
+    description: Target VM host/IP
+    required: true
+  ssh_user:
+    description: SSH user
+    required: true
+  ssh_key_b64:
+    description: Base64-encoded SSH private key
+    required: true
+  rate:
+    description: limit_req rate (e.g. 30r/s)
+    required: false
+    default: "30r/s"
+  burst:
+    description: limit_req burst
+    required: false
+    default: "100"
+  zone_name:
+    description: limit_req zone name
+    required: false
+    default: "site_limit"
+runs:
+  using: composite
+  steps:
+    - name: Decode SSH key
+      shell: bash
+      run: |
+        echo "${{ inputs.ssh_key_b64 }}" | base64 -d > "${{ runner.temp }}/hardening_key.pem"
+        chmod 600 "${{ runner.temp }}/hardening_key.pem"
+    - name: Write hardening config over SSH
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ inputs.vm_host }}
+        username: ${{ inputs.ssh_user }}
+        key_path: ${{ runner.temp }}/hardening_key.pem
+        script: |
+          set -e
+          sudo tee /etc/nginx/conf.d/hardening.conf > /dev/null <<'HARDENING_EOF'
+          limit_req_zone $binary_remote_addr zone=${{ inputs.zone_name }}:10m rate=${{ inputs.rate }};
+          limit_req_status 429;
+          map $request_uri $bad_request_uri {
+              default 0;
+              ~*(?:\.env|\.git|\.svn|\.hg|/\.aws|/\.ssh|/\.vscode|/\.idea)   1;
+              ~*(?:wp-admin|wp-login|wp-includes|wp-content|xmlrpc\.php)     1;
+              ~*(?:phpunit|eval-stdin|allow_url_include|auto_prepend_file)   1;
+              ~*(?:/vendor/|/cgi-bin/|luci|/SDK/webLanguage|adminer)         1;
+              ~*\.(?:php|asp|aspx|jsp|cgi|env)(?:$|[?/])                     1;
+          }
+          HARDENING_EOF
+          sudo mkdir -p /etc/nginx/snippets
+          sudo tee /etc/nginx/snippets/hardening.conf > /dev/null <<'SNIPPET_EOF'
+          if ($request_method !~ ^(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)$) { return 444; }
+          if ($bad_request_uri) { return 444; }
+          limit_req zone=${{ inputs.zone_name }} burst=${{ inputs.burst }} nodelay;
+          SNIPPET_EOF
+    - name: Remove SSH key
+      if: always()
+      shell: bash
+      run: rm -f "${{ runner.temp }}/hardening_key.pem"
