@@ -1,0 +1,103 @@
+name: Deploy Docker image to Oracle VM (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      vm_host:        { required: true,  type: string }
+      ssh_user:       { required: true,  type: string }
+      image_name:     { required: true,  type: string }
+      domains:        { required: true,  type: string }
+      site_name:      { required: true,  type: string }
+      nginx_config_path: { required: true, type: string }
+      container_port: { required: false, type: string, default: "8080" }
+      restart_policy: { required: false, type: string, default: "unless-stopped" }
+      build_context:  { required: false, type: string, default: "." }
+      platforms:      { required: false, type: string, default: "linux/amd64" }
+      cert_email:     { required: false, type: string, default: "diegovaille@gmail.com" }
+    secrets:
+      OCI_VM_SSH_KEY: { required: true }
+      DOCKER_ENV:     { required: true }
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        run: docker buildx build --platform ${{ inputs.platforms }} -t ${{ inputs.image_name }}:latest --load "${{ inputs.build_context }}"
+
+      - name: Save image
+        run: docker save ${{ inputs.image_name }}:latest | gzip > image.tar.gz
+
+      - name: Decode SSH key
+        run: |
+          echo "${{ secrets.OCI_VM_SSH_KEY }}" | base64 -d > "${{ runner.temp }}/key.pem"
+          chmod 600 "${{ runner.temp }}/key.pem"
+
+      - name: Upload image + nginx config to VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ inputs.vm_host }}
+          username: ${{ inputs.ssh_user }}
+          key_path: ${{ runner.temp }}/key.pem
+          source: "image.tar.gz,${{ inputs.nginx_config_path }}"
+          target: /home/${{ inputs.ssh_user }}/_deploy
+
+      - name: Apply nginx hardening
+        uses: diegovaille/deploy-templates/actions/apply-nginx-hardening@main
+        with:
+          vm_host: ${{ inputs.vm_host }}
+          ssh_user: ${{ inputs.ssh_user }}
+          ssh_key_b64: ${{ secrets.OCI_VM_SSH_KEY }}
+          zone_name: api_limit
+          rate: "20r/s"
+          burst: "40"
+
+      - name: Deploy on VM
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          DOCKER_ENV: ${{ secrets.DOCKER_ENV }}
+        with:
+          host: ${{ inputs.vm_host }}
+          username: ${{ inputs.ssh_user }}
+          key_path: ${{ runner.temp }}/key.pem
+          envs: DOCKER_ENV
+          script: |
+            set -e
+            cd /home/${{ inputs.ssh_user }}/_deploy
+
+            echo "Installing nginx server block..."
+            sudo cp "${{ inputs.nginx_config_path }}" "/etc/nginx/sites-available/${{ inputs.site_name }}"
+            sudo ln -sf "/etc/nginx/sites-available/${{ inputs.site_name }}" "/etc/nginx/sites-enabled/${{ inputs.site_name }}"
+            sudo nginx -t && sudo systemctl reload nginx
+
+            echo "Ensuring SSL certificate..."
+            FIRST_DOMAIN=$(echo "${{ inputs.domains }}" | awk '{print $1}')
+            if ! sudo certbot certificates 2>/dev/null | grep -q "$FIRST_DOMAIN"; then
+              CERT_DOMAINS=""
+              for d in ${{ inputs.domains }}; do CERT_DOMAINS="$CERT_DOMAINS -d $d"; done
+              sudo certbot --nginx -n --agree-tos --redirect --email "${{ inputs.cert_email }}" $CERT_DOMAINS
+            fi
+
+            echo "Writing container env file..."
+            printf '%s' "$DOCKER_ENV" | sudo tee /home/${{ inputs.ssh_user }}/${{ inputs.image_name }}.env > /dev/null
+            sudo chmod 600 /home/${{ inputs.ssh_user }}/${{ inputs.image_name }}.env
+
+            echo "Loading and (re)starting container..."
+            gunzip -c image.tar.gz | sudo docker load
+            sudo docker rm -f ${{ inputs.image_name }} || true
+            sudo docker run -d --name ${{ inputs.image_name }} \
+              --restart ${{ inputs.restart_policy }} \
+              --env-file /home/${{ inputs.ssh_user }}/${{ inputs.image_name }}.env \
+              -p ${{ inputs.container_port }}:${{ inputs.container_port }} \
+              ${{ inputs.image_name }}:latest
+
+            sudo systemctl reload nginx
+            rm -rf /home/${{ inputs.ssh_user }}/_deploy
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -f "${{ runner.temp }}/key.pem"
