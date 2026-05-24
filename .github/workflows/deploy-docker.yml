@@ -14,9 +14,12 @@ on:
       build_context:  { required: false, type: string, default: "." }
       platforms:      { required: false, type: string, default: "linux/amd64" }
       cert_email:     { required: false, type: string, default: "diegovaille@gmail.com" }
+      # Non-secret env (vars + literals), one KEY=value per line. Merged into the container env.
+      extra_env:      { required: false, type: string, default: "" }
+      # Extra docker run args, e.g. "-v /home/ubuntu/.oci:/root/.oci"
+      volume_mounts:  { required: false, type: string, default: "" }
     secrets:
       OCI_VM_SSH_KEY: { required: true }
-      DOCKER_ENV:     { required: true }
 
 jobs:
   deploy:
@@ -32,18 +35,31 @@ jobs:
       - name: Save image
         run: docker save ${{ inputs.image_name }}:latest | gzip > image.tar.gz
 
+      - name: Build container env file
+        env:
+          ALL_SECRETS: ${{ toJSON(secrets) }}
+          EXTRA_ENV: ${{ inputs.extra_env }}
+        run: |
+          # Every inherited secret becomes a container env var, except infra/provisioning ones.
+          echo "$ALL_SECRETS" | jq -r '
+            to_entries[]
+            | select(.key | test("^(OCI_VM_SSH_KEY|OCI_PRIVATE_KEY_PEM_B64|github_token)$") | not)
+            | "\(.key)=\(.value)"' > app.env
+          # Append non-secret env (vars + literals) passed by the caller.
+          printf '%s\n' "$EXTRA_ENV" >> app.env
+
       - name: Decode SSH key
         run: |
           echo "${{ secrets.OCI_VM_SSH_KEY }}" | base64 -d > "${{ github.workspace }}/key.pem"
           chmod 600 "${{ github.workspace }}/key.pem"
 
-      - name: Upload image + nginx config to VM
+      - name: Upload image + nginx config + env to VM
         uses: appleboy/scp-action@v0.1.3
         with:
           host: ${{ inputs.vm_host }}
           username: ${{ inputs.ssh_user }}
           key_path: ${{ github.workspace }}/key.pem
-          source: "image.tar.gz,${{ inputs.nginx_config_path }}"
+          source: "image.tar.gz,${{ inputs.nginx_config_path }},app.env"
           target: /home/${{ inputs.ssh_user }}/_deploy_${{ github.run_id }}
 
       - name: Apply nginx hardening
@@ -58,13 +74,10 @@ jobs:
 
       - name: Deploy on VM
         uses: appleboy/ssh-action@v1.0.0
-        env:
-          DOCKER_ENV: ${{ secrets.DOCKER_ENV }}
         with:
           host: ${{ inputs.vm_host }}
           username: ${{ inputs.ssh_user }}
           key_path: ${{ github.workspace }}/key.pem
-          envs: DOCKER_ENV
           script: |
             set -e
             cd /home/${{ inputs.ssh_user }}/_deploy_${{ github.run_id }}
@@ -82,22 +95,23 @@ jobs:
               sudo certbot --nginx -n --agree-tos --redirect --email "${{ inputs.cert_email }}" $CERT_DOMAINS
             fi
 
-            echo "Writing container env file..."
-            printf '%s' "$DOCKER_ENV" | sudo tee /home/${{ inputs.ssh_user }}/${{ inputs.image_name }}.env > /dev/null
-            sudo chmod 600 /home/${{ inputs.ssh_user }}/${{ inputs.image_name }}.env
+            echo "Installing container env file..."
+            sudo cp app.env "/home/${{ inputs.ssh_user }}/${{ inputs.image_name }}.env"
+            sudo chmod 600 "/home/${{ inputs.ssh_user }}/${{ inputs.image_name }}.env"
 
             echo "Loading and (re)starting container..."
             gunzip -c image.tar.gz | sudo docker load
             sudo docker rm -f ${{ inputs.image_name }} || true
             sudo docker run -d --name ${{ inputs.image_name }} \
               --restart ${{ inputs.restart_policy }} \
-              --env-file /home/${{ inputs.ssh_user }}/${{ inputs.image_name }}.env \
+              --env-file "/home/${{ inputs.ssh_user }}/${{ inputs.image_name }}.env" \
+              ${{ inputs.volume_mounts }} \
               -p ${{ inputs.container_port }}:${{ inputs.container_port }} \
               ${{ inputs.image_name }}:latest
 
             sudo systemctl reload nginx
             rm -rf /home/${{ inputs.ssh_user }}/_deploy_${{ github.run_id }}
 
-      - name: Remove SSH key
+      - name: Cleanup runner
         if: always()
-        run: rm -f "${{ github.workspace }}/key.pem"
+        run: rm -f "${{ github.workspace }}/key.pem" app.env

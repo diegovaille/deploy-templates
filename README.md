@@ -18,7 +18,9 @@ See `docs/specs/` for the full design.
 
 **Secrets:**
 - `OCI_VM_SSH_KEY` — base64-encoded SSH private key for the VM (both workflows).
-- `DOCKER_ENV` — full `.env`-format blob with the container's env vars (`deploy-docker` only).
+- For `deploy-docker`: every other inherited secret becomes a container env var automatically
+  (via `secrets: inherit` + `toJSON(secrets)`), except `OCI_VM_SSH_KEY`, `OCI_PRIVATE_KEY_PEM_B64`,
+  and `github_token`. Non-secret env (vars + literals) goes through the `extra_env` input.
 
 **Variables (`vars`):**
 - `OCI_VM_SSH_USER` — SSH user (e.g. `ubuntu`).
@@ -69,12 +71,20 @@ jobs:
       site_name: backend
       nginx_config_path: deploy/nginx.conf
       container_port: "8080"
+      extra_env: |
+        SPRING_PROFILES_ACTIVE=prod
+        OCI_PRIVATE_KEY_PATH=/root/.oci/oci_api_key.pem
+        POSTGRES_USER=${{ vars.POSTGRES_USER }}
+        POSTGRES_HOST=${{ vars.POSTGRES_HOST }}
+      volume_mounts: "-v /home/ubuntu/.oci:/root/.oci"
       # optional: restart_policy (default "unless-stopped"), build_context ("."), platforms ("linux/amd64")
-    secrets: inherit                                        # OCI_VM_SSH_KEY, DOCKER_ENV
+    secrets: inherit                                        # OCI_VM_SSH_KEY + the container's secret env vars
 ```
 
-The container env comes entirely from the `DOCKER_ENV` secret (one `.env` blob), written to a
-`0600` file on the VM and used via `docker run --env-file`. `--restart unless-stopped` is the default.
+The container env is assembled on the fly: each inherited **secret** becomes an env var (minus the
+infra ones above), plus the non-secret `extra_env` lines (vars + literals). It's written to a `0600`
+file on the VM and used via `docker run --env-file`. `--restart unless-stopped` is the default;
+`volume_mounts` is appended verbatim to `docker run` (e.g. for the OCI key volume).
 
 ## Versioning
 
