@@ -1,0 +1,94 @@
+name: Deploy static site to Oracle VM (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      vm_host:        { required: true,  type: string }
+      ssh_user:       { required: true,  type: string }
+      domains:        { required: true,  type: string }
+      remote_path:    { required: true,  type: string }
+      site_name:      { required: true,  type: string }
+      nginx_config_path: { required: true, type: string }
+      build_command:  { required: false, type: string, default: "npm run build" }
+      build_dir:      { required: false, type: string, default: "dist" }
+      node_version:   { required: false, type: string, default: "22" }
+      cert_email:     { required: false, type: string, default: "diegovaille@gmail.com" }
+    secrets:
+      OCI_VM_SSH_KEY: { required: true }
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Build
+        run: |
+          npm ci
+          ${{ inputs.build_command }}
+
+      - name: Package artifact
+        run: tar -czf site.tar.gz "${{ inputs.build_dir }}"
+
+      - name: Decode SSH key
+        run: |
+          echo "${{ secrets.OCI_VM_SSH_KEY }}" | base64 -d > "${{ runner.temp }}/key.pem"
+          chmod 600 "${{ runner.temp }}/key.pem"
+
+      - name: Upload artifact + nginx config to VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ inputs.vm_host }}
+          username: ${{ inputs.ssh_user }}
+          key_path: ${{ runner.temp }}/key.pem
+          source: "site.tar.gz,${{ inputs.nginx_config_path }}"
+          target: /home/${{ inputs.ssh_user }}/_deploy
+
+      - name: Apply nginx hardening
+        uses: diegovaille/deploy-templates/actions/apply-nginx-hardening@main
+        with:
+          vm_host: ${{ inputs.vm_host }}
+          ssh_user: ${{ inputs.ssh_user }}
+          ssh_key_b64: ${{ secrets.OCI_VM_SSH_KEY }}
+
+      - name: Deploy on VM
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ inputs.vm_host }}
+          username: ${{ inputs.ssh_user }}
+          key_path: ${{ runner.temp }}/key.pem
+          script: |
+            set -e
+            cd /home/${{ inputs.ssh_user }}/_deploy
+
+            echo "Publishing static build..."
+            sudo rm -rf "${{ inputs.remote_path }}"
+            sudo mkdir -p "${{ inputs.remote_path }}"
+            sudo tar -xzf site.tar.gz -C "${{ inputs.remote_path }}" --strip-components=1
+            sudo chown -R www-data:www-data "${{ inputs.remote_path }}"
+
+            echo "Installing nginx server block..."
+            sudo cp "${{ inputs.nginx_config_path }}" "/etc/nginx/sites-available/${{ inputs.site_name }}"
+            sudo ln -sf "/etc/nginx/sites-available/${{ inputs.site_name }}" "/etc/nginx/sites-enabled/${{ inputs.site_name }}"
+
+            echo "Reloading nginx..."
+            sudo nginx -t && sudo systemctl reload nginx
+
+            echo "Ensuring SSL certificate..."
+            FIRST_DOMAIN=$(echo "${{ inputs.domains }}" | awk '{print $1}')
+            if ! sudo certbot certificates 2>/dev/null | grep -q "$FIRST_DOMAIN"; then
+              CERT_DOMAINS=""
+              for d in ${{ inputs.domains }}; do CERT_DOMAINS="$CERT_DOMAINS -d $d"; done
+              sudo certbot --nginx -n --agree-tos --redirect --email "${{ inputs.cert_email }}" $CERT_DOMAINS
+              sudo systemctl reload nginx
+            fi
+
+            rm -rf /home/${{ inputs.ssh_user }}/_deploy
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -f "${{ runner.temp }}/key.pem"
