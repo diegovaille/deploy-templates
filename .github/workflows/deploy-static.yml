@@ -36,15 +36,15 @@ jobs:
 
       - name: Decode SSH key
         run: |
-          echo "${{ secrets.OCI_VM_SSH_KEY }}" | base64 -d > "${{ runner.temp }}/key.pem"
-          chmod 600 "${{ runner.temp }}/key.pem"
+          echo "${{ secrets.OCI_VM_SSH_KEY }}" | base64 -d > "${{ github.workspace }}/key.pem"
+          chmod 600 "${{ github.workspace }}/key.pem"
 
       - name: Upload artifact + nginx config to VM
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ inputs.vm_host }}
           username: ${{ inputs.ssh_user }}
-          key_path: ${{ runner.temp }}/key.pem
+          key_path: ${{ github.workspace }}/key.pem
           source: "site.tar.gz,${{ inputs.nginx_config_path }}"
           target: /home/${{ inputs.ssh_user }}/_deploy
 
@@ -60,7 +60,7 @@ jobs:
         with:
           host: ${{ inputs.vm_host }}
           username: ${{ inputs.ssh_user }}
-          key_path: ${{ runner.temp }}/key.pem
+          key_path: ${{ github.workspace }}/key.pem
           script: |
             set -e
             cd /home/${{ inputs.ssh_user }}/_deploy
@@ -91,4 +91,4 @@ jobs:
 
       - name: Remove SSH key
         if: always()
-        run: rm -f "${{ runner.temp }}/key.pem"
+        run: rm -f "${{ github.workspace }}/key.pem"

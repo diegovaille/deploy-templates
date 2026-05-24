@@ -28,14 +28,14 @@ runs:
     - name: Decode SSH key
       shell: bash
       run: |
-        echo "${{ inputs.ssh_key_b64 }}" | base64 -d > "${{ runner.temp }}/hardening_key.pem"
-        chmod 600 "${{ runner.temp }}/hardening_key.pem"
+        echo "${{ inputs.ssh_key_b64 }}" | base64 -d > "${{ github.workspace }}/hardening_key.pem"
+        chmod 600 "${{ github.workspace }}/hardening_key.pem"
     - name: Write hardening config over SSH
       uses: appleboy/ssh-action@v1.0.0
       with:
         host: ${{ inputs.vm_host }}
         username: ${{ inputs.ssh_user }}
-        key_path: ${{ runner.temp }}/hardening_key.pem
+        key_path: ${{ github.workspace }}/hardening_key.pem
         script: |
           set -e
           sudo tee /etc/nginx/conf.d/hardening.conf > /dev/null <<'HARDENING_EOF'
@@ -59,4 +59,4 @@ runs:
     - name: Remove SSH key
       if: always()
       shell: bash
-      run: rm -f "${{ runner.temp }}/hardening_key.pem"
+      run: rm -f "${{ github.workspace }}/hardening_key.pem"
