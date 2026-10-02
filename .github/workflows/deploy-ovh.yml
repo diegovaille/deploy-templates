@@ -1,0 +1,73 @@
+name: Deploy PIB release to OVH
+on:
+  workflow_call:
+    inputs:
+      kind: {required: true, type: string}
+      site: {required: true, type: string}
+      environment: {required: false, type: string, default: ovh}
+    secrets:
+      DEPLOY_SSH_KEY: {required: true}
+      DEPLOY_KNOWN_HOSTS: {required: true}
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: ovh-${{ inputs.site }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        if: inputs.kind == 'static'
+        with:
+          node-version: '22'
+      - name: Validate deployment
+        env:
+          KIND: ${{ inputs.kind }}
+          SITE: ${{ inputs.site }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+        run: |
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          case "$KIND:$SITE" in
+            static:frontend|static:preview|static:pinguimice|static:pinguimice-admin|api:backend) ;;
+            *) exit 1 ;;
+          esac
+      - name: Build static release
+        if: inputs.kind == 'static'
+        run: |
+          npm ci
+          npm run build
+          tar -czf release.tar.gz -C dist .
+      - name: Build API release
+        if: inputs.kind == 'api'
+        run: |
+          docker build -t "storehouse-api:$GITHUB_SHA" .
+          docker save "storehouse-api:$GITHUB_SHA" | gzip > release.tar.gz
+      - name: Configure SSH
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          umask 077
+          mkdir -p "$HOME/.ssh"
+          printf '%s\n' "$KEY" > "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+      - name: Upload and activate
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          KIND: ${{ inputs.kind }}
+          SITE: ${{ inputs.site }}
+        run: |
+          destination="${DEPLOY_USER}@${DEPLOY_HOST}"
+          artifact="release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.tar.gz"
+          scp -o BatchMode=yes -o StrictHostKeyChecking=yes release.tar.gz "$destination:$artifact"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$destination" \
+            "sudo -n /usr/local/sbin/primeira-deploy-release '$KIND' '$SITE' '$GITHUB_SHA' \"\$HOME/$artifact\" && rm \"\$HOME/$artifact\""
+      - name: Cleanup SSH
+        if: always()
+        run: rm -f "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
