@@ -18,7 +18,7 @@ Estes arquivos mantêm os serviços da PIB na VPS existente do TudoFirme. Primei
 
 ## Ativação do CI
 
-O workflow reutilizável `.github/workflows/deploy-ovh.yml` é chamado pelos deploys manuais da API e do frontend Primeira; seus workflows Oracle foram desabilitados. Fixar sua referência em um commit aprovado nos consumidores; usar inputs `kind=static` e site `frontend`, `preview`, `pinguimice` ou `pinguimice-admin`, ou `kind=api` e `site=backend`. Os callers Pinguim permanecem em rascunho até sua migração.
+O workflow reutilizável `.github/workflows/deploy-ovh.yml` é chamado automaticamente em pushes para main da API e do frontend Primeira, com acionamento manual adicional; seus workflows Oracle foram desabilitados. Fixar sua referência em um commit aprovado nos consumidores; usar inputs `kind=static` e site `frontend`, `preview`, `pinguimice` ou `pinguimice-admin`, ou `kind=api` e `site=backend`. Os callers Pinguim permanecem em rascunho até sua migração.
 
 Provisionar o ativador como `/usr/local/sbin/primeira-deploy-release`, proprietário root e modo 0755. Usar chave de CI de usuário separado com permissão para enviar artefatos e executar somente esse ativador por sudo; não adicionar o usuário ao grupo Docker. Configure ambiente GitHub `ovh` (ou `ovh-preview`), variables `DEPLOY_HOST` e `DEPLOY_USER`, secrets `DEPLOY_SSH_KEY` e `DEPLOY_KNOWN_HOSTS` verificado. Segredos da API permanecem no servidor.
 
@@ -40,12 +40,12 @@ Para ensaiar, clonar o config apontando `db_container` para o banco isolado e us
 
 Recuperação: baixar ciphertext e manifesto do R2, descriptografar fora da VPS com a identidade privada, conferir SHA-256 do dump e restaurar por `pg_restore --exit-on-error` em PostgreSQL 16 isolado. Comparar tabelas, contagens, sequências, Liquibase e leitura pela API antes de considerar o backup recuperável. O arquivo `configuration.tar.age` permite recuperar também o ambiente e a chave OCI; nunca imprimir seu conteúdo. Repetir o teste mensalmente e após mudanças relevantes.
 
-Começar com acionamento manual. Habilitar deploy em push para main somente após a virada; preview usa ambiente separado. Scripts Oracle existentes não devem receber o IP da OVH como substituição simples.
+API e frontend começaram com acionamento manual e tiveram deploy em push para main habilitado após a virada; preview usa ambiente separado. Scripts Oracle existentes não devem receber o IP da OVH como substituição simples.
 
 ## Validação realizada
 
 Ensaio na OVH: PostgreSQL 12 → 16, contagens iguais nas 17 tabelas, logins da loja e Pinguim Admin, leituras autenticadas e bloqueio sem token. Cinco hosts passaram em Nginx isolado; fallback SPA, 404 para JS ausente e bloqueio de dotfiles validados. Rollback estático preservou o symlink anterior quando o probe HTTPS falhou por ausência dos certificados PIB na OVH. Transformação de 450 imagens e dois logos passou com rollback. Workflow passou em actionlint. Cliente de URL pública passou nos três testes unitários.
 
-Virada de 2026-10-03: publicações por CI da API e frontend passaram; banco final restaurado com contagens iguais à origem; 450 imagens e dois logos atualizados com originais preservados. Upload R2, venda e cancelamento com recomposição de estoque passaram em cópia isolada. Certificados dos três hosts foram emitidos na OVH; login Google real e acesso à organização passaram no ambiente novo. Backups horários criptografados e monitor de validade estão ativos; recuperação externa foi testada. Câmera/leitor físico e alerta por canal externo ainda precisam de validação/configuração.
+Virada de 2026-10-03: publicações por CI da API e frontend passaram; banco final restaurado com contagens iguais à origem; 450 imagens e dois logos atualizados com originais preservados. Upload R2, venda e cancelamento com recomposição de estoque passaram em cópia isolada. Certificados dos três hosts foram emitidos na OVH e as três renovações simuladas passaram; login Google real e acesso à organização passaram no ambiente novo. Backups horários criptografados e monitor de validade estão ativos; recuperação externa foi testada. Câmera/leitor físico e alerta por canal externo ainda precisam de validação/configuração.
 
 PostgreSQL 16 na OVH é a única fonte de dados após a virada. API Oracle está parada, sem restart automático, e o usuário do banco antigo está NOLOGIN. O Nginx Oracle encaminha HTTPS para o IP explícito OVH com Host/SNI e verificação de certificado. Depois de novas gravações, rollback de imagem ou site mantém o banco OVH: não reabrir o PostgreSQL 12 antigo. Recursos Oracle permanecem preservados para observação e recuperação; não foram excluídos.
