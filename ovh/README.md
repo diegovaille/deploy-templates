@@ -9,8 +9,12 @@ Estes arquivos preparam os serviços da PIB na VPS existente do TudoFirme. Não 
 - `deploy-release.py`: ativação estática por symlink atômico e imagem API por commit, com verificação e retorno à release anterior em falha. Rollback de imagem não reverte migrations de banco; novas migrations precisam ser compatíveis ou ter estratégia própria.
 - Scripts de ensaio: usam ambiente descartável, imagem e builds publicados. Nunca rodar `smoke-login.py` contra produção; ele altera e restaura senhas apenas na cópia nomeada `primeira-db-rehearsal`.
 - `inventory-urls.sql`, `count-rows.sql`: consultas de inventário sem exibir URLs ou registros individuais.
-- `migrate-image-urls.sql`: transforma os dois prefixos Oracle observados. Executar com `-v image_origin=https://imagens.primeira.app.br -v apply=false` para simular. `apply=true` grava somente após cópia verificada e backup. O rollback preserva URLs alteradas pelo usuário após a migração.
+- `migrate-image-urls.sql`: transforma os dois prefixos Oracle observados. Executar com `-v image_origin=https://images.primeira.app.br -v apply=false` para simular. `apply=true` grava somente após cópia verificada e backup. O rollback preserva URLs alteradas pelo usuário após a migração.
 - `r2-images.yml.example`: lista completa de buckets para o override Spring; imagens no R2 e despesas ainda na Oracle. Anexos privados precisam de implementação separada antes da retirada de OCI.
+
+## Cópia de imagens
+
+`copy-images-r2.py` valida um manifesto JSON com os campos Oracle `name`, `size`, `md5` e `headers`, e arquivos baixados preservando keys. Sem `--upload` apenas confere o snapshot. Com `--upload`, usa AWS CLI e credenciais JSON modo 0600 (`access_key_id` e `secret_access_key`), limitadas ao bucket; copia sem apagar objetos, preserva Content-Type e metadados, valida tamanho, MD5 e cabeçalhos de cada objeto e grava relatório. Marcadores de diretório vazios também são preservados. Fornecer `--manifest`, `--files`, `--credentials`, `--account-id` e `--report`; não versionar dados nem credenciais. Executar nova sincronização com uploads pausados antes da virada.
 
 ## Ativação do CI
 

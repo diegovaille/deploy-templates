@@ -7,7 +7,7 @@ project:
         provider: aws
         region: auto
         endpoint: https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com
-        public-base-url: https://imagens.primeira.app.br
+        public-base-url: https://images.primeira.app.br
         access-key: ${R2_ACCESS_KEY_ID}
         secret-key: ${R2_SECRET_ACCESS_KEY}
       - name: despesas-files
