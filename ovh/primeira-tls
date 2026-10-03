@@ -2,9 +2,9 @@
 set -eu
 
 # Install as /etc/letsencrypt/renewal-hooks/deploy/primeira-tls, root:0755.
-# Ignore other projects' certificates on the shared VPS.
+# Renew only PIB hosts; ignore other projects on the shared VPS.
 case "$RENEWED_LINEAGE" in
-    /etc/letsencrypt/live/primeira.app.br|/etc/letsencrypt/live/preview.primeira.app.br|/etc/letsencrypt/live/api.primeira.app.br) ;;
+    /etc/letsencrypt/live/primeira.app.br|/etc/letsencrypt/live/preview.primeira.app.br|/etc/letsencrypt/live/api.primeira.app.br|/etc/letsencrypt/live/pinguimice.com.br|/etc/letsencrypt/live/admin.pinguimice.com.br) ;;
     *) exit 0 ;;
 esac
 destination="/srv/primeira/tls/${RENEWED_LINEAGE##*/}"
