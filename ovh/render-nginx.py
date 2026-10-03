@@ -8,6 +8,8 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('output', type=Path)
 parser.add_argument('--rehearsal', action='store_true')
 parser.add_argument('--rehearsal-api-ip', type=ipaddress.ip_address)
+parser.add_argument('--sites', nargs='+', choices=['frontend', 'preview', 'pinguimice', 'pinguimice-admin', 'backend'])
+parser.add_argument('--certificate-root', type=Path, default=Path('/etc/letsencrypt/live'))
 args = parser.parse_args()
 args.output.mkdir(parents=True, exist_ok=True)
 sites = {
@@ -44,6 +46,8 @@ proxy = f'''proxy_pass http://{api_host}:{api_port};
         proxy_send_timeout 30s;
         proxy_read_timeout 60s;'''
 for site, domains in sites.items():
+    if args.sites and site not in args.sites:
+        continue
     names = ' '.join(domains)
     cert = domains[0]
     if args.rehearsal:
@@ -51,8 +55,8 @@ for site, domains in sites.items():
         redirect = ''
     else:
         listen = f'''listen 443 ssl;
-    ssl_certificate /etc/letsencrypt/live/{cert}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/{cert}/privkey.pem;
+    ssl_certificate {args.certificate_root}/{cert}/fullchain.pem;
+    ssl_certificate_key {args.certificate_root}/{cert}/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;'''
         redirect = f'''server {{
     listen 80;

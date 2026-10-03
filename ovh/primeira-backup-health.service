@@ -1,0 +1,7 @@
+[Unit]
+Description=Check freshness of Primeira database backup
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/sbin/primeira-backup-health
+UMask=0077

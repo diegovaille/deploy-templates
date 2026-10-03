@@ -1,0 +1,10 @@
+[Unit]
+Description=Hourly Primeira database backup
+
+[Timer]
+OnCalendar=*-*-* *:00:00 UTC
+Persistent=true
+Unit=primeira-backup.service
+
+[Install]
+WantedBy=timers.target

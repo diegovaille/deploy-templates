@@ -30,9 +30,11 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
       OCI_PRIVATE_KEY_PATH: /run/oci/oci_api_key.pem
+      SPRING_CONFIG_ADDITIONAL_LOCATION: file:/run/config/r2-images.yml
       JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=65.0
     volumes:
       - ./oci:/run/oci:ro
+      - ./config:/run/config:ro
     ports:
       - 127.0.0.1:8080:8080
     mem_limit: 2g
