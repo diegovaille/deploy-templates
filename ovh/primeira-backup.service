@@ -1,0 +1,15 @@
+[Unit]
+Description=Encrypted Primeira PostgreSQL backup to private R2
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/opt/primeira-backup/bin/python /usr/local/sbin/primeira-backup --config /srv/primeira/secrets/backup-config.json
+TimeoutStartSec=30min
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+

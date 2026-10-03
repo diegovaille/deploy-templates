@@ -1,0 +1,20 @@
+# Pass via SPRING_CONFIG_ADDITIONAL_LOCATION=file:/run/config/r2-images.yml.
+# Spring replaces the entire buckets list: include both entries.
+project:
+  storage:
+    buckets:
+      - name: storehouse-images
+        provider: aws
+        region: auto
+        endpoint: https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com
+        public-base-url: https://images.primeira.app.br
+        access-key: ${R2_ACCESS_KEY_ID}
+        secret-key: ${R2_SECRET_ACCESS_KEY}
+      - name: despesas-files
+        provider: oracle
+        region: sa-saopaulo-1
+        namespace: grz9zu8hdz2q
+        user-id: ${OCI_USER_ID}
+        tenant-id: ${OCI_TENANCY_ID}
+        fingerprint: ${OCI_FINGERPRINT}
+        private-key: ${OCI_PRIVATE_KEY_PATH}

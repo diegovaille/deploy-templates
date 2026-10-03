@@ -1,0 +1,45 @@
+name: primeira
+services:
+  db:
+    image: postgres:16-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: storehousedb
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d storehousedb']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 1g
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
+  api:
+    image: ${API_IMAGE:?Set an immutable API image tag}
+    restart: unless-stopped
+    depends_on:
+      db: {condition: service_healthy}
+    env_file: app.env
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      POSTGRES_HOST: db
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      OCI_PRIVATE_KEY_PATH: /run/oci/oci_api_key.pem
+      SPRING_CONFIG_ADDITIONAL_LOCATION: file:/run/config/r2-images.yml
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=65.0
+    volumes:
+      - ./oci:/run/oci:ro
+      - ./config:/run/config:ro
+    ports:
+      - 127.0.0.1:8080:8080
+    mem_limit: 2g
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
+volumes:
+  pgdata:

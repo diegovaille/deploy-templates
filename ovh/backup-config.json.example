@@ -1,0 +1,19 @@
+{
+  "bucket": "primeira-db-backups",
+  "endpoint": "https://replace-account-id.r2.cloudflarestorage.com",
+  "credentials": "/srv/primeira/secrets/backup-r2-credentials.json",
+  "recipients_file": "/srv/primeira/secrets/backup-recipients.txt",
+  "db_container": "primeira-db-1",
+  "db_user": "storehouse_user",
+  "db_name": "storehousedb",
+  "state_directory": "/var/lib/primeira-backup",
+  "api_image_file": "/srv/primeira/app/api-image.env",
+  "recovery_files": [
+    "/srv/primeira/app/.env",
+    "/srv/primeira/app/app.env",
+    "/srv/primeira/app/api-image.env",
+    "/srv/primeira/app/compose.yml",
+    "/srv/primeira/app/config/r2-images.yml",
+    "/srv/primeira/app/oci/oci_api_key.pem"
+  ]
+}
