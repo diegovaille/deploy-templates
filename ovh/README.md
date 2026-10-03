@@ -1,6 +1,6 @@
 # Deploy da PIB na OVH
 
-Estes arquivos mantêm os serviços da PIB na VPS existente do TudoFirme. Primeira, preview e API foram ativados na OVH em 2026-10-03, com PostgreSQL 16 e imagens no R2. Os frontends Pinguim continuam na Oracle e usam a API migrada. Não execute bootstrap do financeiro novamente nem substitua seus hosts Nginx.
+Estes arquivos mantêm os serviços da PIB na VPS existente do TudoFirme. Primeira, preview e API foram ativados na OVH em 2026-10-03, com PostgreSQL 16 e imagens no R2. Os frontends Pinguim têm hosts OVH preparados para a virada autorizada de 2026-10-03, usando a mesma API migrada. Não execute bootstrap do financeiro novamente nem substitua seus hosts Nginx.
 
 ## Arquivos
 
@@ -18,7 +18,7 @@ Estes arquivos mantêm os serviços da PIB na VPS existente do TudoFirme. Primei
 
 ## Ativação do CI
 
-O workflow reutilizável `.github/workflows/deploy-ovh.yml` é chamado automaticamente em pushes para main da API e do frontend Primeira, com acionamento manual adicional; seus workflows Oracle foram desabilitados. Fixar sua referência em um commit aprovado nos consumidores; usar inputs `kind=static` e site `frontend`, `preview`, `pinguimice` ou `pinguimice-admin`, ou `kind=api` e `site=backend`. Os callers Pinguim permanecem em rascunho até sua migração.
+O workflow reutilizável `.github/workflows/deploy-ovh.yml` é chamado automaticamente em pushes para main da API e do frontend Primeira, com acionamento manual adicional; seus workflows Oracle foram desabilitados. Fixar sua referência em um commit aprovado nos consumidores; usar inputs `kind=static` e site `frontend`, `preview`, `pinguimice` ou `pinguimice-admin`, ou `kind=api` e `site=backend`. Os callers Pinguim seguem o mesmo fluxo após sua virada.
 
 Provisionar o ativador como `/usr/local/sbin/primeira-deploy-release`, proprietário root e modo 0755. Usar chave de CI de usuário separado com permissão para enviar artefatos e executar somente esse ativador por sudo; não adicionar o usuário ao grupo Docker. Configure ambiente GitHub `ovh` (ou `ovh-preview`), variables `DEPLOY_HOST` e `DEPLOY_USER`, secrets `DEPLOY_SSH_KEY` e `DEPLOY_KNOWN_HOSTS` verificado. Segredos da API permanecem no servidor.
 
@@ -26,7 +26,7 @@ Para API, provisionar `/srv/primeira/app/compose.yml`, `.env`, `app.env`, `api-i
 
 O gerador aceita `--sites frontend preview backend` para ativar apenas Primeira, e `--certificate-root /srv/primeira/tls`. Durante a transição, adicionar `--trusted-api-proxy 152.67.44.147 --trusted-api-proxy 132.226.252.195`: somente esses proxies Oracle podem fornecer o IP do cliente à API; remover essas opções quando os proxies forem retirados. Isso preserva o limite de requisições por cliente durante a propagação DNS.
 
-Instalar `primeira-tls` como `/etc/letsencrypt/renewal-hooks/deploy/primeira-tls`, root:0755. Emitir os três certificados com Certbot webroot `/var/www/letsencrypt`, cert-name igual ao hostname, e manter `certbot.timer` ativo. O hook atualiza os arquivos de `/srv/primeira/tls` usados pelo Nginx, ignorando certificados de outros projetos. Validar renovação com `certbot renew --dry-run --cert-name <hostname>`; não executar hooks de deploy usando certificados de staging. Depois de reload, os probes devem tolerar o breve intervalo de troca dos workers, preservando a validação TLS.
+Instalar `primeira-tls` como `/etc/letsencrypt/renewal-hooks/deploy/primeira-tls`, root:0755. Emitir os três certificados com Certbot webroot `/var/www/letsencrypt`, cert-name igual ao hostname, e manter `certbot.timer` ativo. O hook atualiza os arquivos de `/srv/primeira/tls` usados pelo Nginx para Primeira e Pinguim, ignorando certificados de outros projetos. Para Pinguim, emitir `--cert-name pinguimice.com.br -d pinguimice.com.br -d www.pinguimice.com.br` e `--cert-name admin.pinguimice.com.br -d admin.pinguimice.com.br` no mesmo webroot. Validar renovação com `certbot renew --dry-run --cert-name <hostname>`; não executar hooks de deploy usando certificados de staging. Depois de reload, os probes devem tolerar o breve intervalo de troca dos workers, preservando a validação TLS.
 
 ## Backups privados
 
