@@ -1,6 +1,6 @@
 # Deploy da PIB na OVH
 
-Estes arquivos preparam os serviços da PIB na VPS existente do TudoFirme. Não execute bootstrap do financeiro novamente nem substitua seus hosts Nginx. A produção continua na Oracle até concluir certificados, backups externos e a virada do banco.
+Estes arquivos mantêm os serviços da PIB na VPS existente do TudoFirme. Primeira, preview e API foram ativados na OVH em 2026-10-03, com PostgreSQL 16 e imagens no R2. Os frontends Pinguim continuam na Oracle e usam a API migrada. Não execute bootstrap do financeiro novamente nem substitua seus hosts Nginx.
 
 ## Arquivos
 
@@ -18,13 +18,15 @@ Estes arquivos preparam os serviços da PIB na VPS existente do TudoFirme. Não 
 
 ## Ativação do CI
 
-O workflow reutilizável `.github/workflows/deploy-ovh.yml` ainda não substitui os workflows Oracle. Após revisão, fixar sua referência em um commit aprovado nos consumidores; usar inputs `kind=static` e site `frontend`, `preview`, `pinguimice` ou `pinguimice-admin`, ou `kind=api` e `site=backend`.
+O workflow reutilizável `.github/workflows/deploy-ovh.yml` é chamado pelos deploys manuais da API e do frontend Primeira; seus workflows Oracle foram desabilitados. Fixar sua referência em um commit aprovado nos consumidores; usar inputs `kind=static` e site `frontend`, `preview`, `pinguimice` ou `pinguimice-admin`, ou `kind=api` e `site=backend`. Os callers Pinguim permanecem em rascunho até sua migração.
 
 Provisionar o ativador como `/usr/local/sbin/primeira-deploy-release`, proprietário root e modo 0755. Usar chave de CI de usuário separado com permissão para enviar artefatos e executar somente esse ativador por sudo; não adicionar o usuário ao grupo Docker. Configure ambiente GitHub `ovh` (ou `ovh-preview`), variables `DEPLOY_HOST` e `DEPLOY_USER`, secrets `DEPLOY_SSH_KEY` e `DEPLOY_KNOWN_HOSTS` verificado. Segredos da API permanecem no servidor.
 
 Para API, provisionar `/srv/primeira/app/compose.yml`, `.env`, `app.env`, `api-image.env`, `oci/` e `config/r2-images.yml`, além do banco restaurado. O Compose importa o YAML completo, montado somente para leitura. `api-image.env` contém `API_IMAGE=storehouse-api:<commit>`. Para sites, o Nginx aponta para `/srv/primeira/sites/<site>/current`. Releases antigas são preservadas; definir limpeza e retenção após estabilizar.
 
-O gerador aceita `--sites frontend preview backend` para ativar apenas Primeira, e `--certificate-root /srv/primeira/tls` para os certificados copiados. Eles não serão renovados automaticamente sem configurar Certbot e o deploy hook. Depois de reload, os probes devem tolerar o breve intervalo de troca dos workers, preservando a validação TLS.
+O gerador aceita `--sites frontend preview backend` para ativar apenas Primeira, e `--certificate-root /srv/primeira/tls`. Durante a transição, adicionar `--trusted-api-proxy 152.67.44.147 --trusted-api-proxy 132.226.252.195`: somente esses proxies Oracle podem fornecer o IP do cliente à API; remover essas opções quando os proxies forem retirados. Isso preserva o limite de requisições por cliente durante a propagação DNS.
+
+Instalar `primeira-tls` como `/etc/letsencrypt/renewal-hooks/deploy/primeira-tls`, root:0755. Emitir os três certificados com Certbot webroot `/var/www/letsencrypt`, cert-name igual ao hostname, e manter `certbot.timer` ativo. O hook atualiza os arquivos de `/srv/primeira/tls` usados pelo Nginx, ignorando certificados de outros projetos. Validar renovação com `certbot renew --dry-run --cert-name <hostname>`; não executar hooks de deploy usando certificados de staging. Depois de reload, os probes devem tolerar o breve intervalo de troca dos workers, preservando a validação TLS.
 
 ## Backups privados
 
@@ -44,4 +46,6 @@ Começar com acionamento manual. Habilitar deploy em push para main somente apó
 
 Ensaio na OVH: PostgreSQL 12 → 16, contagens iguais nas 17 tabelas, logins da loja e Pinguim Admin, leituras autenticadas e bloqueio sem token. Cinco hosts passaram em Nginx isolado; fallback SPA, 404 para JS ausente e bloqueio de dotfiles validados. Rollback estático preservou o symlink anterior quando o probe HTTPS falhou por ausência dos certificados PIB na OVH. Transformação de 450 imagens e dois logos passou com rollback. Workflow passou em actionlint. Cliente de URL pública passou nos três testes unitários.
 
-Ainda não validados: publicação positiva por CI, callback Google real, câmera/leitor no navegador, operações de gravação completas, upload R2 e certificados dos domínios PIB na OVH.
+Virada de 2026-10-03: publicações por CI da API e frontend passaram; banco final restaurado com contagens iguais à origem; 450 imagens e dois logos atualizados com originais preservados. Upload R2, venda e cancelamento com recomposição de estoque passaram em cópia isolada. Certificados dos três hosts foram emitidos na OVH; login Google real e acesso à organização passaram no ambiente novo. Backups horários criptografados e monitor de validade estão ativos; recuperação externa foi testada. Câmera/leitor físico e alerta por canal externo ainda precisam de validação/configuração.
+
+PostgreSQL 16 na OVH é a única fonte de dados após a virada. API Oracle está parada, sem restart automático, e o usuário do banco antigo está NOLOGIN. O Nginx Oracle encaminha HTTPS para o IP explícito OVH com Host/SNI e verificação de certificado. Depois de novas gravações, rollback de imagem ou site mantém o banco OVH: não reabrir o PostgreSQL 12 antigo. Recursos Oracle permanecem preservados para observação e recuperação; não foram excluídos.
