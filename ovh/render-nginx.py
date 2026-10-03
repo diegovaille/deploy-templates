@@ -10,6 +10,8 @@ parser.add_argument('--rehearsal', action='store_true')
 parser.add_argument('--rehearsal-api-ip', type=ipaddress.ip_address)
 parser.add_argument('--sites', nargs='+', choices=['frontend', 'preview', 'pinguimice', 'pinguimice-admin', 'backend'])
 parser.add_argument('--certificate-root', type=Path, default=Path('/etc/letsencrypt/live'))
+parser.add_argument('--trusted-api-proxy', action='append', type=ipaddress.ip_address, default=[],
+                    help='Exact legacy proxy IP allowed to supply the API client address')
 args = parser.parse_args()
 args.output.mkdir(parents=True, exist_ok=True)
 sites = {
@@ -66,6 +68,10 @@ for site, domains in sites.items():
 }}
 '''
     if site == 'backend':
+        if args.trusted_api_proxy:
+            listen += '\n    ' + '\n    '.join(
+                f'set_real_ip_from {address};' for address in args.trusted_api_proxy)
+            listen += '\n    real_ip_header X-Forwarded-For;\n    real_ip_recursive on;'
         locations = f'''location ~ ^/api/(auth|pinguim-admin/auth)/ {{
         limit_req zone=primeira_login burst=10 nodelay;
         {proxy}

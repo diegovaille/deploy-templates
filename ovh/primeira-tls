@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+
+# Install as /etc/letsencrypt/renewal-hooks/deploy/primeira-tls, root:0755.
+# Ignore other projects' certificates on the shared VPS.
+case "$RENEWED_LINEAGE" in
+    /etc/letsencrypt/live/primeira.app.br|/etc/letsencrypt/live/preview.primeira.app.br|/etc/letsencrypt/live/api.primeira.app.br) ;;
+    *) exit 0 ;;
+esac
+destination="/srv/primeira/tls/${RENEWED_LINEAGE##*/}"
+install -d -m 700 "$destination"
+install -m 644 "$RENEWED_LINEAGE/fullchain.pem" "$destination/.fullchain-next.pem"
+install -m 600 "$RENEWED_LINEAGE/privkey.pem" "$destination/.privkey-next.pem"
+mv "$destination/.fullchain-next.pem" "$destination/fullchain.pem"
+mv "$destination/.privkey-next.pem" "$destination/privkey.pem"
+nginx -t
+systemctl reload nginx
