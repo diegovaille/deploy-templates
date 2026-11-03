@@ -11,10 +11,6 @@ project:
         access-key: ${R2_ACCESS_KEY_ID}
         secret-key: ${R2_SECRET_ACCESS_KEY}
       - name: despesas-files
-        provider: oracle
-        region: sa-saopaulo-1
-        namespace: grz9zu8hdz2q
-        user-id: ${OCI_USER_ID}
-        tenant-id: ${OCI_TENANCY_ID}
-        fingerprint: ${OCI_FINGERPRINT}
-        private-key: ${OCI_PRIVATE_KEY_PATH}
+        provider: local
+        region: local
+        root-directory: /run/attachments

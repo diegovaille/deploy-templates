@@ -10,7 +10,7 @@ Estes arquivos mantêm os serviços da PIB na VPS existente do TudoFirme. Primei
 - Scripts de ensaio: usam ambiente descartável, imagem e builds publicados. Nunca rodar `smoke-login.py` contra produção; ele altera e restaura senhas apenas na cópia nomeada `primeira-db-rehearsal`.
 - `inventory-urls.sql`, `count-rows.sql`: consultas de inventário sem exibir URLs ou registros individuais.
 - `migrate-image-urls.sql`: transforma os dois prefixos Oracle observados. Executar com `-v image_origin=https://images.primeira.app.br -v apply=false` para simular. `apply=true` grava somente após cópia verificada e backup. O rollback preserva URLs alteradas pelo usuário após a migração.
-- `r2-images.yml.example`: lista completa de buckets para o override Spring; imagens no R2 e despesas ainda na Oracle. Anexos privados precisam de implementação separada antes da retirada de OCI.
+- `r2-images.yml.example`: lista completa de buckets para o override Spring; imagens no R2 e anexos privados no volume OVH, sem credenciais OCI.
 
 ## Cópia de imagens
 
@@ -22,11 +22,19 @@ O workflow reutilizável `.github/workflows/deploy-ovh.yml` é chamado automatic
 
 Provisionar o ativador como `/usr/local/sbin/primeira-deploy-release`, proprietário root e modo 0755. Usar chave de CI de usuário separado com permissão para enviar artefatos e executar somente esse ativador por sudo; não adicionar o usuário ao grupo Docker. Configure ambiente GitHub `ovh` (ou `ovh-preview`), variables `DEPLOY_HOST` e `DEPLOY_USER`, secrets `DEPLOY_SSH_KEY` e `DEPLOY_KNOWN_HOSTS` verificado. Segredos da API permanecem no servidor.
 
-Para API, provisionar `/srv/primeira/app/compose.yml`, `.env`, `app.env`, `api-image.env`, `oci/` e `config/r2-images.yml`, além do banco restaurado. O Compose importa o YAML completo, montado somente para leitura. `api-image.env` contém `API_IMAGE=storehouse-api:<commit>`. Para sites, o Nginx aponta para `/srv/primeira/sites/<site>/current`. Releases antigas são preservadas; definir limpeza e retenção após estabilizar.
+Para API, provisionar `/srv/primeira/app/compose.yml`, `.env`, `app.env`, `api-image.env` e `config/r2-images.yml`, além do banco restaurado. O Compose importa o YAML completo, montado somente para leitura. `api-image.env` contém `API_IMAGE=storehouse-api:<commit>`. Para sites, o Nginx aponta para `/srv/primeira/sites/<site>/current`. Releases antigas são preservadas; definir limpeza e retenção após estabilizar.
 
 O gerador aceita `--sites frontend preview backend` para ativar apenas Primeira, e `--certificate-root /srv/primeira/tls`. Durante a transição, adicionar `--trusted-api-proxy 152.67.44.147 --trusted-api-proxy 132.226.252.195`: somente esses proxies Oracle podem fornecer o IP do cliente à API; remover essas opções quando os proxies forem retirados. Isso preserva o limite de requisições por cliente durante a propagação DNS.
 
 Instalar `primeira-tls` como `/etc/letsencrypt/renewal-hooks/deploy/primeira-tls`, root:0755. Emitir os três certificados com Certbot webroot `/var/www/letsencrypt`, cert-name igual ao hostname, e manter `certbot.timer` ativo. O hook atualiza os arquivos de `/srv/primeira/tls` usados pelo Nginx para Primeira e Pinguim, ignorando certificados de outros projetos. Para Pinguim, emitir `--cert-name pinguimice.com.br -d pinguimice.com.br -d www.pinguimice.com.br` e `--cert-name admin.pinguimice.com.br -d admin.pinguimice.com.br` no mesmo webroot. Validar renovação com `certbot renew --dry-run --cert-name <hostname>`; não executar hooks de deploy usando certificados de staging. Depois de reload, os probes devem tolerar o breve intervalo de troca dos workers, preservando a validação TLS.
+
+## Anexos privados de despesas
+
+O bucket lógico `despesas-files` usa `provider: local` e `root-directory: /run/attachments`. Provisionar `/srv/primeira/attachments` root:0700 e montar somente esse diretório na API, com escrita para novos uploads. Não servir esse diretório pelo Nginx nem criar domínio público para os anexos. As imagens permanecem no R2.
+
+Arquivos recebem uma chave imutável por envio. O banco guarda uma referência `local://despesas-files/...`; a resposta da despesa expõe `/api/pinguim-admin/despesas/<id>/anexo`. O frontend faz o download com JWT. A API verifica a filial da despesa e exige que a referência pertença ao mesmo ID, rejeitando referências forjadas em JSON. Respostas usam attachment, no-store e nosniff.
+
+Incluir `/srv/primeira/attachments` em `recovery_directories` do backup. O dump vem antes do arquivo de configuração; nomes imutáveis e ausência de limpeza automática preservam o arquivo citado pelo snapshot durante uploads concorrentes. Conferir no teste de recuperação o SHA-256 do anexo dentro de `configuration.tar.age`. Não retirar a dependência Oracle nem apagar o objeto antigo antes de verificar cópia, configuração nova, download autenticado e backup externo.
 
 ## Backups privados
 
