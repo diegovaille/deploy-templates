@@ -13,7 +13,7 @@
     "/srv/primeira/app/app.env",
     "/srv/primeira/app/api-image.env",
     "/srv/primeira/app/compose.yml",
-    "/srv/primeira/app/config/r2-images.yml",
-    "/srv/primeira/app/oci/oci_api_key.pem"
-  ]
+    "/srv/primeira/app/config/r2-images.yml"
+  ],
+  "recovery_directories": ["/srv/primeira/attachments"]
 }

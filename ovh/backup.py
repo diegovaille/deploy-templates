@@ -124,12 +124,18 @@ def main():
                            str(manifest_file)], check=True)
             artifacts = [encrypted, encrypted_manifest]
             recovery_files = config.get('recovery_files', [])
-            if recovery_files:
+            recovery_directories = config.get('recovery_directories', [])
+            if recovery_files or recovery_directories:
                 archive = work / 'configuration.tar'
                 with tarfile.open(archive, 'w') as output:
                     for item in recovery_files:
                         path = Path(item).resolve(strict=True)
                         output.add(path, arcname=path.relative_to('/'), recursive=False)
+                    for item in recovery_directories:
+                        path = Path(item).resolve(strict=True)
+                        if not path.is_dir() or path == Path('/'):
+                            raise ValueError('expected a dedicated recovery directory')
+                        output.add(path, arcname=path.relative_to('/'), recursive=True)
                 sealed = work / 'configuration.tar.age'
                 subprocess.run(['age', '-R', config['recipients_file'], '-o', str(sealed), str(archive)],
                                check=True)
